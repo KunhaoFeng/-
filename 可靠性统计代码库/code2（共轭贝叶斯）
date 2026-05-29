@@ -1,0 +1,65 @@
+import numpy as np
+from scipy.stats import beta, invgamma, norm
+
+# ===================== 1. 固定参数 =====================
+M = 10000  # 抽样次数
+np.random.seed(123)  # 固定随机种子，结果可复现
+
+# 火工品后验分布参数
+fire_alpha = 2751
+fire_beta = 1
+
+# 四个铰链的后验超参数（按上表）
+hinge_params = [
+    {"mu_n": 45.0804, "kappa_n": 28, "a_n": 14, "b_n": 2.567, "d": 44.0},  # 0#
+    {"mu_n": 14.7293, "kappa_n": 28, "a_n": 14, "b_n": 0.542, "d": 14.5},  # 1#
+    {"mu_n": 14.7371, "kappa_n": 28, "a_n": 14, "b_n": 0.164, "d": 14.5},  # 2#
+    {"mu_n": 14.7432, "kappa_n": 28, "a_n": 14, "b_n": 0.287, "d": 14.5},  # 3#
+]
+
+# ===================== 2. 共轭贝叶斯抽样 =====================
+total_R = []
+
+for _ in range(M):
+    # 步骤1：抽样火工品可靠度
+    r1 = beta.rvs(a=fire_alpha, b=fire_beta, size=1)[0]
+
+    # 步骤2：抽样每个铰链的可靠度
+    r2_total = 1.0
+    for param in hinge_params:
+        mu_n = param["mu_n"]
+        kappa_n = param["kappa_n"]
+        a_n = param["a_n"]
+        b_n = param["b_n"]
+        d = param["d"]
+
+        # 从逆Gamma分布抽样方差
+        sigma2 = invgamma.rvs(a=a_n, scale=b_n, size=1)[0]
+        sigma = np.sqrt(sigma2)
+
+        # 从正态分布抽样均值
+        mu = norm.rvs(loc=mu_n, scale=sigma / np.sqrt(kappa_n), size=1)[0]
+
+        # 计算该次抽样的铰链可靠度
+        z = (mu - d) / sigma
+        r2_j = norm.cdf(z)
+        r2_total *= r2_j
+
+    # 步骤3：计算总可靠度
+    total_r = r1 * r2_total
+    total_R.append(total_r)
+
+# ===================== 3. 计算结果 =====================
+# 后验均值（点估计）
+r_point = np.mean(total_R)
+# 70%置信下限（30%分位数）
+r_lower = np.quantile(total_R, 0.3)
+
+# 输出结果
+print("=" * 60)
+print("        太阳翼结构机构共轭贝叶斯评估结果")
+print("=" * 60)
+print(f"抽样次数：{M}")
+print(f"总可靠度后验均值（点估计）：{r_point:.4f}")
+print(f"70%置信水平下可靠度置信下限：{r_lower:.4f}")
+print("=" * 60)
